@@ -27,11 +27,15 @@ void ASSpawner::BeginPlay()
 {
 	Super::BeginPlay();
 	OnStartCheck();
-	StartSpawn();
+	if (bStartOnBeginPlay)
+	{
+		StartSpawn();
+	}
 }
 
 void ASSpawner::OnConstruction(const FTransform& Transform)
 {
+	Super::OnConstruction(Transform);
 	SpawnArea->SetBoxExtent(FVector(RadiusOfSpawn, RadiusOfSpawn, MaxZBoxExtent));
 	SetActorScale3D(FVector(1.f, 1.f, 1.f));
 }
@@ -43,7 +47,7 @@ void ASSpawner::Tick(float DeltaTime)
 	SpawnActorsLoop();
 }
 
-void ASSpawner::SetParams(TMap<UClass*, int32> NewActorsToSpawn, float NewRadiusOfSpawn, float NewIntervalOfSpawn)
+void ASSpawner::SetParams(const TMap<UClass*, int32>& NewActorsToSpawn, float NewRadiusOfSpawn, float NewIntervalOfSpawn)
 {
 	ActorsToSpawn = NewActorsToSpawn;
 	CheckClassValidity();
@@ -51,7 +55,7 @@ void ASSpawner::SetParams(TMap<UClass*, int32> NewActorsToSpawn, float NewRadius
 	IntervalOfSpawn = FMath::Clamp(NewIntervalOfSpawn, 0.f, MaxIntervalOfSpawn);
 }
 
-void ASSpawner::AddClassToSpawn(TMap<UClass*, int32> NewActorsToSpawn)
+void ASSpawner::AddClassToSpawn(const TMap<UClass*, int32>& NewActorsToSpawn)
 {
 	ActorsToSpawn.Append(NewActorsToSpawn);
 	CheckClassValidity();
@@ -128,6 +132,7 @@ void ASSpawner::SpawnActorsLoop()
 
 void ASSpawner::GetRandomLocationInBox()
 {
+	//Breaking the cycle in this tick if more than 10 unsuccessful searches for free space
 	if (LoopIterator > 10)
 	{
 		return;
@@ -150,13 +155,15 @@ void ASSpawner::GetRandomLocationInBox()
 	}
 }
 
-void ASSpawner::CheckSpawnPosition(FVector Location)
+void ASSpawner::CheckSpawnPosition(FVector& Location)
 {
-	Location.Z += 100.f;
+	const float HalfCapsuleHeight = 90.f;
+	const float CapsuleDiameter = 60.f;
+	Location.Z += HalfCapsuleHeight;
 	TArray<FHitResult> Hit;
 	TArray<AActor*> ActorToIgnore;
 	UKismetSystemLibrary::SphereTraceMultiForObjects(
-		GetWorld(), Location, Location, 60.f, ObjectTypeToTrace, false, ActorToIgnore, EDrawDebugTrace::None, Hit, true);
+		GetWorld(), Location, Location, CapsuleDiameter, ObjectTypeToTrace, false, ActorToIgnore, EDrawDebugTrace::None, Hit, true);
 	if (Hit.Num() > 0)
 	{
 		for (FHitResult& HittedObject : Hit)
@@ -179,7 +186,7 @@ void ASSpawner::StopSpawnTimer()
 	}
 }
 
-void ASSpawner::Spawn(FVector Location)
+void ASSpawner::Spawn(const FVector& Location)
 {
 	FActorSpawnParameters SpawnParameters;
 	SpawnParameters.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
@@ -216,8 +223,10 @@ void ASSpawner::SpawnLoop()
 		}
 		else
 		{
+			StopSpawnTimer();
 			AfterSpawn();
 			SetActorTickEnabled(false);
+			UE_LOG(LogTemp, Display, TEXT("End of limit in %s"), *GetActorNameOrLabel());
 			return;
 		}
 	}
